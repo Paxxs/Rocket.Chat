@@ -4,28 +4,28 @@
     "metadata": {
         "name": "rocket-chat",
         "annotations": {
-            "description": "Rocket.Chat with a MongoDB database",
-            "tags": "quickstart,nodejs,mongodb",
+            "description": "Rocket.Chat with a MongoDB database running with a Persistent storage. Use this template if you want to run Rocket.Chat in production.",
+            "tags": "quickstart,nodejs,mongodb,instant-app",
             "iconClass": "icon-nodejs"
         }
     },
     "objects": [
         {
-        "kind": "PersistentVolumeClaim",
-        "apiVersion": "v1",
-        "metadata": {
-            "name": "${DATABASE_SERVICE_NAME}"
-        },
-        "spec": {
-            "accessModes": [
-            "ReadWriteOnce"
-            ],
-            "resources": {
-            "requests": {
-                "storage": "${VOLUME_CAPACITY}"
+            "kind": "PersistentVolumeClaim",
+            "apiVersion": "v1",
+            "metadata": {
+                "name": "${DATABASE_SERVICE_NAME}"
+            },
+            "spec": {
+                "accessModes": [
+                    "ReadWriteOnce"
+                ],
+                "resources": {
+                    "requests": {
+                        "storage": "${VOLUME_CAPACITY}"
+                    }
+                }
             }
-            }
-        }
         },
         {
             "kind": "DeploymentConfig",
@@ -33,7 +33,7 @@
             "metadata": {
                 "name": "mongodb",
                 "labels": {
-                    "template": "mongodb-ephemeral-template"
+                    "template": "mongodb-persistent-template"
                 }
             },
             "spec": {
@@ -75,12 +75,6 @@
                         }
                     },
                     "spec": {
-                        "volumes": [
-                            {
-                                "name": "mongodb-data",
-                                "emptyDir": {}
-                            }
-                        ],
                         "containers": [
                             {
                                 "name": "mongodb",
@@ -157,7 +151,7 @@
                             {
                                 "name": "${DATABASE_SERVICE_NAME}-data",
                                 "persistentVolumeClaim": {
-                                "claimName": "${DATABASE_SERVICE_NAME}"
+                                    "claimName": "${DATABASE_SERVICE_NAME}"
                                 }
                             }
                         ],
@@ -169,6 +163,32 @@
                 }
             },
             "status": {}
+        },
+        {
+            "kind": "ImageStream",
+            "apiVersion": "v1",
+            "metadata": {
+                "name": "rocketchat"
+            },
+            "spec": {
+                "dockerImageRepository": "${ROCKETCHAT_IMAGE}",
+                "tags": [
+                    {
+                        "name": "latest",
+                        "annotations": {
+                            "description": "Provides a Rocket.Chat application",
+                            "iconClass": "icon-nodejs",
+                            "tags": "rocketchat"
+                        },
+                        "from": {
+                            "kind": "ImageStreamTag",
+                            "name": "latest"
+                        },
+                        "generation": 1,
+                        "importPolicy": {}
+                    }
+                ]
+            }
         },
         {
             "kind": "DeploymentConfig",
@@ -208,8 +228,7 @@
                             ],
                             "from": {
                                 "kind": "ImageStreamTag",
-                                "namespace": "openshift",
-                                "name": "rocket.chat:latest"
+                                "name": "rocketchat:latest"
                             }
                         }
                     }
@@ -242,7 +261,7 @@
                         "containers": [
                             {
                                 "name": "rocketchat",
-                                "image": "172.30.19.110:5000/openshift/rocket.chat@sha256:0cb778a504334142a411ecf6ea6ab23ba02e64eb2591a5833e4b1745361645ca",
+                                "image": "${ROCKETCHAT_IMAGE}:latest",
                                 "ports": [
                                     {
                                         "containerPort": 3000,
@@ -262,6 +281,30 @@
                                         "mountPath": "/app/uploads"
                                     }
                                 ],
+                                "readinessProbe": {
+                                    "httpGet": {
+                                        "path": "/api/v1/info",
+                                        "port": 3000,
+                                        "scheme": "HTTP"
+                                    },
+                                    "initialDelaySeconds": 5,
+                                    "timeoutSeconds": 1,
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
+                                "livenessProbe": {
+                                    "httpGet": {
+                                        "path": "/api/v1/info",
+                                        "port": 3000,
+                                        "scheme": "HTTP"
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "timeoutSeconds": 1,
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "failureThreshold": 3
+                                },
                                 "terminationMessagePath": "/dev/termination-log",
                                 "imagePullPolicy": "Always"
                             }
@@ -289,7 +332,6 @@
                 }
             },
             "spec": {
-                "host": "rocketchat-rocket-chat.rhel-cdk.10.1.2.2.xip.io",
                 "to": {
                     "kind": "Service",
                     "name": "rocketchat"
@@ -309,7 +351,7 @@
                 "name": "mongodb",
                 "creationTimestamp": null,
                 "labels": {
-                    "template": "mongodb-ephemeral-template"
+                    "template": "mongodb-persistent-template"
                 }
             },
             "spec": {
@@ -373,12 +415,6 @@
             "value": "512Mi"
         },
         {
-            "name": "NAMESPACE",
-            "displayName": "Namespace",
-            "description": "The OpenShift Namespace where the ImageStream resides.",
-            "value": "openshift"
-        },
-        {
             "name": "DATABASE_SERVICE_NAME",
             "displayName": "Database Service Name",
             "description": "The name of the OpenShift Service exposed for the database.",
@@ -405,7 +441,7 @@
             "name": "MONGODB_DATABASE",
             "displayName": "MongoDB Database Name",
             "description": "Name of the MongoDB database accessed.",
-            "value": "sampledb",
+            "value": "rocketchatdb",
             "required": true
         },
         {
@@ -417,11 +453,18 @@
             "required": true
         },
         {
-        "name": "VOLUME_CAPACITY",
-        "displayName": "Volume Capacity",
-        "description": "Volume space available for data, e.g. 512Mi, 2Gi.",
-        "value": "1Gi",
-        "required": true
+            "name": "ROCKETCHAT_IMAGE",
+            "displayName": "RocketChat Image",
+            "description": "The RocketChat image to use for this deployment",
+            "required": true,
+            "value": "rocketchat/rocket.chat"
+        },
+        {
+            "name": "VOLUME_CAPACITY",
+            "displayName": "Volume Capacity",
+            "description": "Volume space available for data, e.g. 512Mi, 2Gi.",
+            "value": "1Gi",
+            "required": true
         }
     ]
 }

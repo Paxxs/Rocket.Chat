@@ -1,15 +1,17 @@
-RocketChat.Migrations.add({
-	version: 37,
-	up: function() {
-		if (RocketChat && RocketChat.models && RocketChat.models.Permissions) {
+import { Migrations } from '../../../app/migrations';
+import { Permissions } from '../../../app/models';
 
+Migrations.add({
+	version: 37,
+	up() {
+		if (Permissions) {
 			// Find permission add-user (changed it to create-user)
-			var addUserPermission = RocketChat.models.Permissions.findOne('add-user');
+			const addUserPermission = Permissions.findOne('add-user');
 
 			if (addUserPermission) {
-				RocketChat.models.Permissions.upsert({ _id: 'create-user' }, { $set: { roles: addUserPermission.roles } });
-				RocketChat.models.Permissions.remove({ _id: 'add-user' });
+				Permissions.upsert({ _id: 'create-user' }, { $set: { roles: addUserPermission.roles } });
+				Permissions.remove({ _id: 'add-user' });
 			}
 		}
-	}
+	},
 });
